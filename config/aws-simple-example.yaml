@@ -1,0 +1,62 @@
+# Simple AWS Infrastructure Configuration Example
+# This file demonstrates a basic AWS infrastructure setup
+
+providers:
+  AWS:
+    region: us-east-1
+    # Use environment variables for credentials in production
+    access_key: ${AWS_ACCESS_KEY_ID}
+    secret_key: ${AWS_SECRET_ACCESS_KEY}
+
+infrastructure:
+  AWS:
+    virtual_machines:
+      - name: web-server
+        instance_type: t2.micro
+        ami_id: ami-0c02fb55956c7d316  # Amazon Linux 2
+        key_pair: my-aws-keypair
+        security_groups:
+          - default
+          - web-sg
+        tags:
+          Name: WebServer
+          Environment: development
+          Project: simple-web-app
+    
+    storage:
+      ebs:
+        size_gb: 20
+        type: gp3
+        encrypted: true
+      
+      s3:
+        bucket_name: my-simple-app-bucket
+        versioning: false
+        encryption: AES256
+    
+    network:
+      vpc:
+        cidr_block: 10.0.0.0/16
+      
+      subnets:
+        - cidr_block: 10.0.1.0/24
+          availability_zone: us-east-1a
+          public: true
+    
+    security:
+      security_groups:
+        - name: web-sg
+          description: Security group for web server
+          rules:
+            - protocol: tcp
+              from_port: 80
+              to_port: 80
+              cidr_blocks: [0.0.0.0/0]
+            - protocol: tcp
+              from_port: 443
+              to_port: 443
+              cidr_blocks: [0.0.0.0/0]
+            - protocol: tcp
+              from_port: 22
+              to_port: 22
+              cidr_blocks: [0.0.0.0/0]
