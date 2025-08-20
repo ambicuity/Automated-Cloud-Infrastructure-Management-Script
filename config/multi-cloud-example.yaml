@@ -1,0 +1,292 @@
+# Example Configuration for Multi-Cloud Infrastructure Deployment
+# This file demonstrates how to configure infrastructure across multiple cloud providers
+
+providers:
+  AWS:
+    region: us-east-1
+    # In production, use environment variables or AWS credentials file
+    access_key: ${AWS_ACCESS_KEY_ID}
+    secret_key: ${AWS_SECRET_ACCESS_KEY}
+  
+  Azure:
+    subscription_id: ${AZURE_SUBSCRIPTION_ID}
+    resource_group: infrastructure-rg
+    location: East US
+  
+  GCP:
+    project_id: ${GCP_PROJECT_ID}
+    zone: us-central1-a
+    region: us-central1
+
+infrastructure:
+  AWS:
+    virtual_machines:
+      - name: web-server-01
+        instance_type: t3.medium
+        ami_id: ami-0c02fb55956c7d316  # Amazon Linux 2
+        key_pair: my-key-pair
+        security_groups:
+          - web-server-sg
+        tags:
+          Environment: production
+          Project: web-app
+          Owner: devops-team
+      
+      - name: database-server
+        instance_type: t3.large
+        ami_id: ami-0c02fb55956c7d316
+        key_pair: my-key-pair
+        security_groups:
+          - database-sg
+        tags:
+          Environment: production
+          Project: web-app
+          Owner: devops-team
+    
+    storage:
+      ebs:
+        - name: web-server-storage
+          size_gb: 50
+          type: gp3
+          encrypted: true
+        - name: database-storage
+          size_gb: 200
+          type: gp3
+          encrypted: true
+      
+      s3:
+        - bucket_name: my-app-backup-bucket
+          versioning: true
+          encryption: AES256
+          lifecycle_policy:
+            - rule_name: delete-old-versions
+              expiration_days: 90
+    
+    network:
+      vpc:
+        name: main-vpc
+        cidr_block: 10.0.0.0/16
+        dns_hostnames: true
+        dns_support: true
+      
+      subnets:
+        - name: public-subnet-1
+          cidr_block: 10.0.1.0/24
+          availability_zone: us-east-1a
+          public: true
+        - name: private-subnet-1
+          cidr_block: 10.0.2.0/24
+          availability_zone: us-east-1a
+          public: false
+        - name: database-subnet-1
+          cidr_block: 10.0.3.0/24
+          availability_zone: us-east-1b
+          public: false
+      
+      internet_gateway:
+        name: main-igw
+      
+      route_tables:
+        - name: public-rt
+          routes:
+            - destination: 0.0.0.0/0
+              gateway: internet_gateway
+    
+    security:
+      security_groups:
+        - name: web-server-sg
+          description: Security group for web servers
+          rules:
+            - protocol: tcp
+              from_port: 80
+              to_port: 80
+              cidr_blocks: [0.0.0.0/0]
+              description: HTTP access
+            - protocol: tcp
+              from_port: 443
+              to_port: 443
+              cidr_blocks: [0.0.0.0/0]
+              description: HTTPS access
+            - protocol: tcp
+              from_port: 22
+              to_port: 22
+              cidr_blocks: [10.0.0.0/16]
+              description: SSH access from VPC
+        
+        - name: database-sg
+          description: Security group for database servers
+          rules:
+            - protocol: tcp
+              from_port: 3306
+              to_port: 3306
+              source_security_group: web-server-sg
+              description: MySQL access from web servers
+            - protocol: tcp
+              from_port: 22
+              to_port: 22
+              cidr_blocks: [10.0.0.0/16]
+              description: SSH access from VPC
+      
+      iam_policies:
+        - name: S3BackupPolicy
+          description: Policy for S3 backup operations
+          actions:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          resources:
+            - arn:aws:s3:::my-app-backup-bucket/*
+        
+        - name: EC2ManagementPolicy
+          description: Policy for EC2 instance management
+          actions:
+            - ec2:DescribeInstances
+            - ec2:StartInstances
+            - ec2:StopInstances
+            - ec2:RebootInstances
+          resources: ["*"]
+
+  Azure:
+    virtual_machines:
+      - name: azure-web-vm
+        size: Standard_D2s_v3
+        image: UbuntuLTS
+        admin_username: azureuser
+        authentication_type: ssh
+        ssh_key_path: ~/.ssh/id_rsa.pub
+        tags:
+          Environment: production
+          Project: web-app
+    
+    storage:
+      storage_account:
+        name: myappstorageaccount
+        type: Standard_LRS
+        tier: Standard
+        encryption: enabled
+        
+      blob_containers:
+        - name: application-data
+          public_access: none
+        - name: backups
+          public_access: none
+    
+    network:
+      vnet:
+        name: azure-vnet
+        address_space: 10.1.0.0/16
+      
+      subnets:
+        - name: web-subnet
+          address_prefix: 10.1.1.0/24
+        - name: database-subnet
+          address_prefix: 10.1.2.0/24
+    
+    security:
+      network_security_groups:
+        - name: web-nsg
+          rules:
+            - name: AllowHTTP
+              priority: 100
+              direction: Inbound
+              protocol: Tcp
+              source_port_range: "*"
+              destination_port_range: 80
+              source_address_prefix: "*"
+              destination_address_prefix: "*"
+              action: Allow
+            
+            - name: AllowHTTPS
+              priority: 101
+              direction: Inbound
+              protocol: Tcp
+              source_port_range: "*"
+              destination_port_range: 443
+              source_address_prefix: "*"
+              destination_address_prefix: "*"
+              action: Allow
+
+  GCP:
+    virtual_machines:
+      - name: gcp-web-instance
+        machine_type: e2-standard-2
+        image_family: ubuntu-2004-lts
+        image_project: ubuntu-os-cloud
+        disk_size_gb: 30
+        tags:
+          - web-server
+          - production
+        metadata:
+          startup-script: |
+            #!/bin/bash
+            apt-get update
+            apt-get install -y nginx
+            systemctl start nginx
+            systemctl enable nginx
+    
+    storage:
+      persistent_disk:
+        name: gcp-web-disk
+        size_gb: 50
+        type: pd-standard
+        zone: us-central1-a
+      
+      cloud_storage:
+        bucket_name: my-gcp-app-storage
+        location: US
+        storage_class: STANDARD
+        versioning: true
+    
+    network:
+      vpc:
+        name: gcp-vpc-network
+        subnet_mode: custom
+      
+      subnets:
+        - name: gcp-web-subnet
+          ip_cidr_range: 10.2.0.0/24
+          region: us-central1
+    
+    security:
+      firewall_rules:
+        - name: allow-web-traffic
+          direction: INGRESS
+          priority: 1000
+          target_tags: [web-server]
+          source_ranges: [0.0.0.0/0]
+          allowed:
+            - IPProtocol: tcp
+              ports: [80, 443]
+        
+        - name: allow-ssh
+          direction: INGRESS
+          priority: 1000
+          target_tags: [web-server]
+          source_ranges: [0.0.0.0/0]
+          allowed:
+            - IPProtocol: tcp
+              ports: [22]
+
+# Security best practices configuration
+security_policies:
+  encryption:
+    at_rest: true
+    in_transit: true
+  
+  access_control:
+    principle_of_least_privilege: true
+    multi_factor_authentication: true
+  
+  monitoring:
+    logging_enabled: true
+    alerting_enabled: true
+    audit_trail: true
+  
+  compliance:
+    frameworks: [SOC2, ISO27001, PCI-DSS]
+  
+  backup_and_recovery:
+    automated_backups: true
+    backup_retention_days: 90
+    cross_region_replication: true
+    disaster_recovery_plan: true
